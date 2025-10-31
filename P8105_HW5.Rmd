@@ -1,0 +1,6 @@
+---
+title: "p8105_hw5_vp2587"
+author: "Veerapetch Petchger"
+date: "2025-10-31"
+output: github_document
+---
