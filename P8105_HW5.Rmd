@@ -45,4 +45,4 @@ birthday_df %>%
   viridis::scale_fill_viridis() +
   theme_minimal()
 ```
-
+The probability of a shared birthday has a positive exponential relationship with group size. At a group size of 23, the probability of a shared birthday is approximately 50%, and caps at `r birthday_df %>% filter(group_size == 50) %>% pull(shared_birthday_prob)`.
