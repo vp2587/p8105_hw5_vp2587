@@ -76,7 +76,7 @@ power_t = function(n = 30, sigma = 5, mu = 0, mu_hat = 0) {
     power_df %>% 
     summarize(
       mu_hat = mean(x),
-      p_val = t.test(x, mu = mu) %>%
+      p_val = t.test(x, mu = 0) %>%
         broom::tidy() %>% 
         pull(p.value)
     )
@@ -94,16 +94,38 @@ power_results =
   tibble(true_mean = mu_vals) %>% 
   mutate(
     power_df = map(
-      true_mean, ~rerun(5000, power_t(n = 30, sigma = 5, mu = .x, mu_hat = 0 )))) %>% 
-  bind_rows() %>% 
+      true_mean, ~rerun(5000, power_t(n = 30, sigma = 5, mu = .x, mu_hat = 0 )) %>%
+        bind_rows()
+  )) %>%
   unnest(power_df)
 ```
 
-- Make a plot showing the proportion of times the null was rejected (the power of the test) on the y axis and the true value of 𝜇on the x axis. Describe the association between effect size and power.
+- Make a plot showing the proportion of times the null was rejected (the power of the test) on the y axis and the true value of 𝜇 on the x axis. Describe the association between effect size and power.
+```{r, power_vs_true_mu}
+power_results %>% 
+  mutate(
+    reject = p_val < 0.05
+  ) %>% 
+  group_by(true_mean) %>% 
+  summarize(
+    power = mean(reject),
+    .groups = "drop"
+  ) %>% 
+  ggplot(aes(x = true_mean, y = power)) +
+  geom_point() +
+  geom_line() +
+  labs(
+    title = "Power for One Sample t-test, n = 30, sd = 5",
+    x = "True mean",
+    y = "Power"
+  ) +
+  theme_minimal()
+  
+```
+Power has a positive relationship with 𝜇 values further from the null. When 𝜇 = 0, the effect size is relatively small with respect to the standard deviation, leaving the power low and the t-test often failing to rejct the null. As 𝜇 increases, the difference to 0 becomes easier to detect, yielding more rejection of the null. By 𝜇 = 4, power approaches 1, meaning that it almost always detects the effect.  
+
+- Make a plot showing the average estimate of 𝜇̂ on the y axis and the true value of 𝜇 on the x axis. Make a second plot (or overlay on the first) the average estimate of 𝜇̂ only in samples for which the null was rejected on the y axis and the true value of on the x axis. Is the sample average of 𝜇̂ across tests for which the null is rejected approximately equal to the true value of 𝜇? Why or why not?
 ```{r}
 
 ```
-
-
-- Make a plot showing the average estimate of 𝜇̂ on the y axis and the true value of 𝜇 on the x axis. Make a second plot (or overlay on the first) the average estimate of 𝜇̂ only in samples for which the null was rejected on the y axis and the true value of on the x axis. Is the sample average of 𝜇̂ across tests for which the null is rejected approximately equal to the true value of 𝜇? Why or why not?
 
