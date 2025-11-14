@@ -100,7 +100,7 @@ power_results =
   unnest(power_df)
 ```
 
-- Make a plot showing the proportion of times the null was rejected (the power of the test) on the y axis and the true value of 𝜇 on the x axis. Describe the association between effect size and power.
+**- Make a plot showing the proportion of times the null was rejected (the power of the test) on the y axis and the true value of 𝜇 on the x axis. Describe the association between effect size and power.**
 ```{r, power_vs_true_mu}
 power_results %>% 
   mutate(
@@ -124,8 +124,111 @@ power_results %>%
 ```
 Power has a positive relationship with 𝜇 values further from the null. When 𝜇 = 0, the effect size is relatively small with respect to the standard deviation, leaving the power low and the t-test often failing to rejct the null. As 𝜇 increases, the difference to 0 becomes easier to detect, yielding more rejection of the null. By 𝜇 = 4, power approaches 1, meaning that it almost always detects the effect.  
 
-- Make a plot showing the average estimate of 𝜇̂ on the y axis and the true value of 𝜇 on the x axis. Make a second plot (or overlay on the first) the average estimate of 𝜇̂ only in samples for which the null was rejected on the y axis and the true value of on the x axis. Is the sample average of 𝜇̂ across tests for which the null is rejected approximately equal to the true value of 𝜇? Why or why not?
+**- Make a plot showing the average estimate of 𝜇̂ on the y axis and the true value of 𝜇 on the x axis. Make a second plot (or overlay on the first) the average estimate of 𝜇̂ only in samples for which the null was rejected on the y axis and the true value of on the x axis. Is the sample average of 𝜇̂ across tests for which the null is rejected approximately equal to the true value of 𝜇? Why or why not?**
+```{r true_mu_vs_avg_mu_hat}
+power_results %>% 
+  mutate(
+    reject = p_val < 0.05
+  ) %>%
+  group_by(true_mean) %>% 
+  summarize(
+    avg_mu_hat = mean(mu_hat),
+    avg_reject = mean(mu_hat[reject]),
+    .groups = "drop"
+  ) %>% 
+  pivot_longer(
+    cols = c(avg_mu_hat, avg_reject),
+    names_to = "type",
+    values_to = "estimate"
+  ) %>% 
+  ggplot(aes(x = true_mean, y = estimate, color = type)) +
+  geom_point() +
+  geom_line() +
+  labs(
+    title = "Average Estimate of Mean vs True Mean",
+    x = "True Mean",
+    y = "Average Estimate of Mean"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  viridis::scale_color_viridis(discrete = TRUE)
+```
+No, the conditional mean of 𝜇^ when the null is rejected is biased upwards and away from 0. This selective filtering only keeps the most significant means. Overall 𝜇^ itself is unbiased, but not under the condition that the null is rejected.
+
+# Problem 3
+**The Washington Post has gathered data on homicides in 50 large U.S. cities and made the data available through a GitHub repository here. You can read their accompanying article here.**
+
+**Describe the raw data. Create a city_state variable (e.g. “Baltimore, MD”) and then summarize within cities to obtain the total number of homicides and the number of unsolved homicides (those for which the disposition is “Closed without arrest” or “Open/No arrest”).**
+```{r unsolved_homicides}
+homicide_df = 
+  read.csv("homicide-data.csv") 
+
+homicide_df %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    city_state = str_c(city, ", ", state),
+    unsolved = disposition %in% c("Closed without arrest", "Open/No arrest")
+  ) %>% 
+  group_by(city_state) %>% 
+  summarize(
+    total_homicides = n(),
+    unsolved_homicides = sum(unsolved),
+    .groups = "drop"
+  ) %>% 
+  knitr::kable(caption = "Summary of Total and Unsolved Homicides by City")
+```
+The raw dataset contains information about homicides collected by the The Washington Post from the police departments of the 50 largest American cities. Each row pertains to a particular homicide, with `r nrow(homicide_df)` observations and `r ncol(homicide_df)` variables. Variables include the victim's demographics, date and location of homicide, and case status. The case status is noted by `disposition`, indicating whether or the case was solved.
+
+**For the city of Baltimore, MD, use the prop.test function to estimate the proportion of homicides that are unsolved; save the output of prop.test as an R object, apply the broom::tidy to this object and pull the estimated proportion and confidence intervals from the resulting tidy dataframe.**
+```{r baltimore}
+bmore_tidy =
+  homicide_df %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    city_state = str_c(city, ", ", state),
+    unsolved = disposition %in% c("Closed without arrest", "Open/No arrest")
+  ) %>% 
+  filter(city_state == "Baltimore, MD") %>%  
+  summarize(
+    total_homicides = n(),
+    unsolved_homicides = sum(unsolved),
+    .groups = "drop"
+  ) %>% 
+{prop.test(.$unsolved_homicides, .$total_homicides)} %>% 
+  broom::tidy() 
+
+bmore_tidy %>% 
+  select(estimate, conf.low, conf.high) %>% 
+  knitr::kable(caption = "Estimated Proportion of Unsolved Homicides in Baltimore, MD")
+```
+The estimated proportion of unsolved homicides in Baltimore, MD is `r bmore_tidy %>% pull(estimate)`, with a 95% confidence interval from (`r bmore_tidy %>% pull(conf.low)`, `r bmore_tidy %>% pull(conf.high)`).
+
+**Now run prop.test for each of the cities in your dataset, and extract both the proportion of unsolved homicides and the confidence interval for each. Do this within a “tidy” pipeline, making use of purrr::map, purrr::map2, list columns and unnest as necessary to create a tidy dataframe with estimated proportions and CIs for each city.**
+```{r unsolved, warning = FALSE}
+homicide_df %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    city_state = str_c(city, ", ", state),
+    unsolved = disposition %in% c("Closed without arrest", "Open/No arrest")
+  ) %>%
+  group_by(city_state) %>% 
+  summarize(
+    total_homicides = n(),
+    unsolved_homicides = sum(unsolved),
+    .groups = "drop"
+  ) %>% 
+  mutate(
+    prop_test = purrr::map2(unsolved_homicides, total_homicides, ~ prop.test(.x, .y)),
+    prop_tidy = purrr::map(prop_test, broom::tidy)
+  ) %>% 
+  unnest(prop_tidy) %>% 
+  select(city_state, estimate, conf.low, conf.high) %>% 
+  knitr::kable(caption = "Estimated Proportion of Unsolved Homicidies in the U.S.' 50 Largest Cities")
+```
+
+Create a plot that shows the estimates and CIs for each city – check out geom_errorbar for a way to add error bars based on the upper and lower limits. Organize cities according to the proportion of unsolved homicides.
 ```{r}
 
 ```
+
 
